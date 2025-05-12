@@ -49,13 +49,16 @@ live_design!{
                     // }
 
                     Button = <Button> {
+                        height:40
                         text: "Helloworld"
                     }  
                     body:" 
+                    <h1>hi</h1>
+                    <p>hello</p>
                     Normal <u>underlined html</u> <s>strike</s> text hello world<ol>
                         <li>one in the list!!!!! </li><li>two</li><li>three<ol><li>sub one</li><li>sub two</li><li>sub three<ol><li>sub sub one</li><li>sub sub two</li><li>sub sub three</li></ol></li></ol></li></ol>inline <code>let x = 1.0;</code> code <b>BOLD text</b>&nbsp;<i>italic</i><br/>
                     <sep/>
-                    Testing a link: <a href=\"https://www.google.com\">Click to Google</a><br/>
+                    Testing a link: <a href=\"https://www.google.com\">Click to Google</a>
                     Next line normal text button:<Button>Hi</Button><br/>lkjlkqjwerlkjqwelrkjqwelkrjqwlekjrqwelr<blockquote>block<b>quote</b><br/><blockquote>blockquote</blockquote><br/>
                     Next line <br/>
                     <sep/>

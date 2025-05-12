@@ -811,7 +811,7 @@ pub struct TextInput {
     #[live] is_read_only: bool,
     #[live] is_numeric_only: bool,
     #[live] empty_text: String,
-    #[live] text: String,
+    #[rust] text: String,
     #[live(0.5)] blink_speed: f64,
 
     #[rust] password_text: String,
@@ -822,11 +822,22 @@ pub struct TextInput {
     #[rust] blink_timer: Timer,
 }
 
-// impl LiveHook for TextInput{
-//     fn after_update_from_doc(&mut self, _cx:&mut Cx){
-//         self.selection = Selection::default();
-//     }
-// }
+ impl LiveHook for TextInput{
+     fn apply_value_unknown(&mut self, cx: &mut Cx, apply: &mut Apply, index: usize, nodes: &[LiveNode]) -> usize {
+        if nodes[index].id == live_id!(text){
+            if !apply.from.is_update_from_doc(){
+                return self.text.apply(cx, apply, index, nodes)
+            }
+        }
+        else{
+            cx.apply_error_no_matching_field(live_error_origin!(), index, nodes);
+        }
+        nodes.skip_node(index)
+     }
+     fn after_new_from_doc(&mut self, cx:&mut Cx){
+         self.check_text_is_empty(cx);
+     }
+ }
 
 impl TextInput {
     pub fn is_password(&self) -> bool {
@@ -890,7 +901,6 @@ impl TextInput {
     pub fn set_selection(&mut self, cx: &mut Cx, selection: Selection) {
         self.selection = selection;
         self.history.force_new_edit_group();
-        self.reset_blink_timer(cx);
         self.draw_bg.redraw(cx);
     }
 
@@ -1305,22 +1315,6 @@ impl TextInput {
         }
     }
     
-    fn reset_cursor_blinker(&mut self, cx: &mut Cx) {
-        if self.is_read_only{
-            self.animator_cut(cx, id!(blink.off));
-        }
-        else{
-            self.animator_cut(cx, id!(blink.off));
-            cx.stop_timer(self.blink_timer);
-            self.blink_timer = cx.start_timeout(self.blink_speed)
-        }
-    }
-}
-
-impl LiveHook for TextInput {
-    fn after_new_from_doc(&mut self, cx:&mut Cx){
-        self.check_text_is_empty(cx);
-    }
 }
 
 impl Widget for TextInput {
@@ -1400,7 +1394,7 @@ impl Widget for TextInput {
             }
             Hit::KeyFocus(_) => {
                 self.animator_play(cx, id!(focus.on));
-                self.reset_cursor_blinker(cx);
+                self.reset_blink_timer(cx);
                 cx.widget_action(uid, &scope.path, TextInputAction::KeyFocus);
             },
             Hit::KeyFocusLost(_) => {
@@ -1419,7 +1413,10 @@ impl Widget for TextInput {
                     control: false
                 },
                 ..
-            }) => self.move_cursor_left(cx, keep_selection),
+            }) => {
+                self.reset_blink_timer(cx);
+                self.move_cursor_left(cx, keep_selection);
+            }
             Hit::KeyDown(KeyEvent {
                 key_code: KeyCode::ArrowRight,
                 modifiers: KeyModifiers {
@@ -1429,7 +1426,10 @@ impl Widget for TextInput {
                     control: false
                 },
                 ..
-            }) => self.move_cursor_right(cx, keep_selection),
+            }) => {
+                self.reset_blink_timer(cx);
+                self.move_cursor_right(cx, keep_selection);
+            }
             Hit::KeyDown(KeyEvent {
                 key_code: KeyCode::ArrowUp,
                 modifiers: KeyModifiers {
@@ -1440,6 +1440,7 @@ impl Widget for TextInput {
                 },
                 ..
             }) => {
+                self.reset_blink_timer(cx);
                 if self.move_cursor_up(cx, keep_selection).is_err() {
                     warning!("can't move cursor because layout was invalidated by earlier event");
                 }
@@ -1454,6 +1455,7 @@ impl Widget for TextInput {
                 },
                 ..
             }) => {
+                self.reset_blink_timer(cx);
                 if self.move_cursor_down(cx, keep_selection).is_err() {
                     warning!("can't move cursor because layout was invalidated by earlier event");
                 }
@@ -1469,6 +1471,7 @@ impl Widget for TextInput {
                 device,
                 ..
             }) if device.is_primary_hit() => {
+                self.reset_blink_timer(cx);
                 self.set_key_focus(cx);
                 let rel = abs - self.text_area.rect(cx).pos;
                 let Ok(cursor) = self.point_in_lpxs_to_cursor(
@@ -1507,6 +1510,7 @@ impl Widget for TextInput {
                 device,
                 ..
             }) if device.is_primary_hit() => {
+                self.reset_blink_timer(cx);
                 self.set_key_focus(cx);
                 let rel = abs - self.text_area.rect(cx).pos;
                 let Ok(cursor) = self.point_in_lpxs_to_cursor(
@@ -1528,14 +1532,21 @@ impl Widget for TextInput {
             }
             Hit::KeyDown(KeyEvent {
                 key_code: KeyCode::ReturnKey,
-                modifiers: KeyModifiers {
+                modifiers: mods @ KeyModifiers {
                     shift: false,
                     ..
                 },
                 ..
             }) => {
                 cx.hide_text_ime();
-                cx.widget_action(uid, &scope.path, TextInputAction::Returned(self.text.clone()));
+                cx.widget_action(
+                    uid,
+                    &scope.path,
+                    TextInputAction::Returned(
+                        self.text.clone(),
+                        mods,
+                    ),
+                );
             },
 
             Hit::KeyDown(KeyEvent {
@@ -1552,6 +1563,7 @@ impl Widget for TextInput {
                 },
                 ..
             }) if !self.is_read_only => {
+                self.reset_blink_timer(cx);
                 self.create_or_extend_edit_group(EditKind::Other);
                 self.apply_edit(
                     cx,
@@ -1568,6 +1580,7 @@ impl Widget for TextInput {
                 key_code: KeyCode::Backspace,
                 ..
             }) if !self.is_read_only => {
+                self.reset_blink_timer(cx);
                 let mut start = self.selection.start().index;
                 let end = self.selection.end().index;
                 if start == end {
@@ -1589,6 +1602,7 @@ impl Widget for TextInput {
                 key_code: KeyCode::Delete,
                 ..
             }) if !self.is_read_only => {
+                self.reset_blink_timer(cx);
                 let start = self.selection.start().index;
                 let mut end = self.selection.end().index;
                 if start == end {
@@ -1808,10 +1822,10 @@ impl TextInputRef {
         }
     }
 
-    pub fn returned(&self, actions: &Actions) -> Option<String> {
+    pub fn returned(&self, actions: &Actions) -> Option<(String, KeyModifiers)> {
         for action in actions.filter_widget_actions_cast::<TextInputAction>(self.widget_uid()){
-            if let TextInputAction::Returned(text) = action{
-                return Some(text);
+            if let TextInputAction::Returned(text, modifiers) = action {
+                return Some((text, modifiers));
             }
         }
         None
@@ -1843,6 +1857,41 @@ impl TextInputRef {
         }
         None
     }
+
+    /// Saves the internal state of this text input widget
+    /// to a new `TextInputState` object.
+    pub fn save_state(&self) -> TextInputState {
+        if let Some(inner) = self.borrow() {
+            TextInputState {
+                text: inner.text.clone(),
+                password_text: inner.password_text.clone(),
+                selection: inner.selection.clone(),
+                history: inner.history.clone(),
+            }
+        } else {
+            TextInputState::default()
+        }
+    }
+
+    /// Restores the internal state of this text input widget
+    /// from the given `TextInputState` object.
+    pub fn restore_state(&self, cx: &mut Cx, state: TextInputState) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.set_text(cx, &state.text);
+            inner.password_text = state.password_text;
+            inner.history = state.history;
+            inner.set_selection(cx, state.selection);
+        }
+    }
+}
+
+/// The saved (checkpointed) state of a text input widget.
+#[derive(Clone, Debug, Default)]
+pub struct TextInputState {
+    text: String,
+    password_text: String,
+    selection: Selection,
+    history: History,
 }
 
 #[derive(Clone, Debug, DefaultNone)]
@@ -1850,7 +1899,7 @@ pub enum TextInputAction {
     None,
     KeyFocus,
     KeyFocusLost,
-    Returned(String),
+    Returned(String, KeyModifiers),
     Escaped,
     Changed(String),
     KeyDownUnhandled(KeyEvent),
